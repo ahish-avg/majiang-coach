@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "majiang-coach"
+version = "0.1.0"
+description = "川麻血战核心算法 (Phase 1: 牌表示 + 胡牌 + 向听 + 有效牌)"
+readme = "README.md"
+requires-python = ">=3.11"
+# 核心算法层:零第三方依赖(便于后续迁移小程序后端)
+dependencies = []
+
+[project.optional-dependencies]
+# 仅 api demo 模块依赖(核心层不依赖)
+api = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "pydantic>=2"]
+# 开发/测试依赖
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+majiang-demo = "majiang_coach.demo:main"
+majiang-game = "majiang_coach.demo_game:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"
