@@ -25,11 +25,18 @@ from majiang_coach.engine.game import Game, RandomActor
 from majiang_coach.engine.melds import Meld
 from majiang_coach.engine.view import PlayerView
 from majiang_coach.analysis import analyze as analyze_view, analysis_result_to_dict
+from majiang_coach.llm import advise as llm_advise, resolve_llm_config
+from majiang_coach.practice import (
+    PracticeSession, SessionStore, IllegalActionError, action_from_dict,
+)
 
 _LACK_LETTER_TO_INT = {"m": 0, "s": 1, "p": 2}
 _SUIT_NAME = {0: "万", 1: "条", 2: "筒"}
 
-app = FastAPI(title="majiang-coach", version="0.2.0")
+app = FastAPI(title="majiang-coach", version="0.3.0")
+
+# Phase 5 内存会话存储(单进程 demo)
+_phase5_store = SessionStore()
 
 
 class AnalyzeRequest(BaseModel):
@@ -60,8 +67,11 @@ class AnalyzeResponse(BaseModel):
 def root() -> dict:
     return {
         "name": "majiang-coach",
-        "version": "0.2.0",
-        "endpoints": ["/api/phase1/analyze", "/api/phase2/play", "/api/phase3/analyze"],
+        "version": "0.3.0",
+        "endpoints": [
+            "/api/phase1/analyze", "/api/phase2/play", "/api/phase3/analyze",
+            "/api/phase4/advise", "/api/phase5/session",
+        ],
     }
 
 
@@ -182,11 +192,10 @@ def _meld_in_to_meld(m: MeldIn) -> Meld:
     return Meld(kind=m.kind, tile=code_to_index(m.tile), src_seat=m.src)
 
 
-@app.post("/api/phase3/analyze")
-def analyze3(req: Analyze3Request) -> dict:
-    """Phase 3 分析:输入座位视角 -> 结构化 AnalysisResult JSON。
+def _build_view(req: Analyze3Request) -> PlayerView:
+    """Analyze3Request -> PlayerView(phase3/phase4 共用解析)。
 
-    14 张(刚摸态)输出弃牌候选 + 推荐;13 张(待摸态)输出 hand + 可选 claim。
+    校验失败抛 HTTPException(400);Hand 解析失败转 400。
     """
     lack = _LACK_LETTER_TO_INT[req.lack_suit] if req.lack_suit else None
 
@@ -210,11 +219,11 @@ def analyze3(req: Analyze3Request) -> dict:
         public_melds = (my_melds, (), (), ())
 
     if req.discards is not None:
+        if len(req.discards) != 4:
+            raise HTTPException(status_code=400, detail="discards 须 4 座")
         discards = tuple(
             tuple(code_to_index(c) for c in d) for d in req.discards
         )
-        if len(discards) != 4:
-            raise HTTPException(status_code=400, detail="discards 须 4 座")
     else:
         discards = ((), (), (), ())
 
@@ -235,7 +244,7 @@ def analyze3(req: Analyze3Request) -> dict:
 
     active = tuple(req.active_seats) if req.active_seats is not None else (0, 1, 2, 3)
 
-    view = PlayerView(
+    return PlayerView(
         seat=0,
         hand=hand,
         melds=my_melds,
@@ -248,9 +257,134 @@ def analyze3(req: Analyze3Request) -> dict:
         active_seats=active,
     )
 
+
+@app.post("/api/phase3/analyze")
+def analyze3(req: Analyze3Request) -> dict:
+    """Phase 3 分析:输入座位视角 -> 结构化 AnalysisResult JSON。
+
+    14 张(刚摸态)输出弃牌候选 + 推荐;13 张(待摸态)输出 hand + 可选 claim。
+    """
+    view = _build_view(req)
     try:
         result = analyze_view(view, weights=req.weights)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     return analysis_result_to_dict(result)
+
+
+# ---- Phase 4: 可插拔 LLM 助手(解释硬算推荐,防幻觉) ----
+
+class LLMOverride(BaseModel):
+    base_url: str | None = Field(None, description="覆盖 .env 的 LLM_BASE_URL")
+    api_key: str | None = Field(None, description="覆盖 .env 的 LLM_API_KEY(不入日志/不回显)")
+    model: str | None = Field(None, description="覆盖 .env 的 LLM_MODEL")
+
+
+class Advise4Request(Analyze3Request):
+    hints_on: bool = Field(True, description="是否调用 LLM 解释;false 仅返硬算 analysis")
+    llm: LLMOverride | None = Field(None, description="每请求 LLM 覆盖(优先级 请求>.env)")
+
+
+@app.post("/api/phase4/advise")
+def advise4(req: Advise4Request) -> dict:
+    """Phase 4:硬算 analysis(始终有)+ 可选 LLM Advice(防幻觉、不替打)。
+
+    出参 = AdviseResult.to_dict() = {analysis, advice, hints_on, error, model_used}。
+    api_key 不入日志、不回显。
+    """
+    view = _build_view(req)
+    override = req.llm.model_dump() if req.llm is not None else None
+    llm_config = resolve_llm_config(override)
+    try:
+        result = llm_advise(
+            view, hints_on=req.hints_on, llm_config=llm_config, weights=req.weights
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return result.to_dict()
+
+
+# ---- Phase 5: 练习模式(人类 + 3 启发式 AI,REST 轮次制)----
+
+class CreateSessionRequest(BaseModel):
+    seed: int | None = Field(None, description="随机种子;留空按时间生成")
+    ai_strengths: list[Literal["weak", "mid", "strong"]] = Field(
+        ["mid", "mid", "mid"], description="座1-3 AI 强度(3 个)"
+    )
+    hints_on: bool = Field(False, description="开提示:人类决策点附 Phase 4 advise(LLM)")
+    llm: LLMOverride | None = Field(None, description="LLM 配置覆盖(优先级 请求>.env)")
+    weights: dict | None = Field(None, description='analyze 权重 {"offense":0.6,"defense":0.4}')
+
+
+class ActRequest(BaseModel):
+    action: dict = Field(..., description='动作 {kind,tile?,src?,tiles?,suit?}(牌用码)')
+
+
+class Advise5Request(BaseModel):
+    weights: dict | None = Field(None, description='analyze 权重覆盖')
+
+
+@app.post("/api/phase5/session")
+def create_session(req: CreateSessionRequest) -> dict:
+    """创建练习会话,返回 {session_id, prompt}(首个提示=swap)。"""
+    if len(req.ai_strengths) != 3:
+        raise HTTPException(status_code=400, detail="ai_strengths 须 3 个")
+    override = req.llm.model_dump() if req.llm is not None else None
+    llm_config = resolve_llm_config(override)
+    sid = _phase5_store.create(
+        ai_strengths=list(req.ai_strengths), hints_on=req.hints_on,
+        llm_config=llm_config, weights=req.weights, seed=req.seed,
+    )
+    session = _phase5_store.get(sid)
+    prompt = session.current_prompt()  # type: ignore[union-attr]
+    return {"session_id": sid, "prompt": prompt}
+
+
+@app.get("/api/phase5/session/{sid}")
+def get_session(sid: str) -> dict:
+    """取当前提示(决策点或 game_over)。"""
+    session = _phase5_store.get(sid)
+    if session is None:
+        raise HTTPException(status_code=404, detail="会话不存在或已过期")
+    return session.current_prompt()
+
+
+@app.post("/api/phase5/session/{sid}/act")
+def act_session(sid: str, req: ActRequest) -> dict:
+    """提交人类动作 -> 下一 prompt(或 game_over + record + summary)。
+
+    非法动作 -> 400 + state 不变 + 重发当前 prompt。
+    """
+    session = _phase5_store.get(sid)
+    if session is None:
+        raise HTTPException(status_code=404, detail="会话不存在或已过期")
+    try:
+        action = action_from_dict(req.action)
+    except (ValueError, KeyError) as e:
+        raise HTTPException(status_code=400, detail=f"动作格式错误: {e}")
+    try:
+        return session.submit(action)
+    except IllegalActionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/phase5/session/{sid}/advise")
+def advise_session(sid: str, req: Advise5Request) -> dict:
+    """on-demand 问教练(Phase 4 advise);无 llm 配置则 advice=null+error。"""
+    session = _phase5_store.get(sid)
+    if session is None:
+        raise HTTPException(status_code=404, detail="会话不存在或已过期")
+    try:
+        return session.advise_on_demand(weights=req.weights)
+    except IllegalActionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/phase5/session/{sid}")
+def delete_session(sid: str) -> dict:
+    """结束会话。"""
+    if _phase5_store.get(sid) is None:
+        raise HTTPException(status_code=404, detail="会话不存在或已过期")
+    _phase5_store.delete(sid)
+    return {"deleted": sid}

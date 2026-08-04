@@ -14,15 +14,16 @@ from __future__ import annotations
 import random
 from typing import Protocol, runtime_checkable
 
-from .. import tiles
 from ..hand import Hand
-from ..win import win
 from .action import (
-    Action, legal_self_actions, legal_claims, legal_discards,
+    Action, legal_self_actions, legal_claims,
 )
-from .melds import Meld
-from .record import GameRecord, make_meld_dict
-from .rules import resolve_claims, robbery_targets
+from .apply import (
+    apply_discard, apply_pon, apply_ankan, apply_daiminkan,
+    apply_tsumo, apply_ron, apply_shouminkan, code_of, codes_of,
+)
+from .record import GameRecord
+from .rules import resolve_claims
 from .settlement import build_result
 from .state import GameState
 from .view import PlayerView
@@ -31,11 +32,11 @@ __all__ = ["Actor", "RandomActor", "Game"]
 
 
 def _code(idx: int) -> str:
-    return tiles.index_to_code(idx)
+    return code_of(idx)
 
 
 def _codes(idxs) -> list[str]:
-    return [tiles.index_to_code(i) for i in idxs]
+    return codes_of(idxs)
 
 
 # ---- Actor 协议 ----
@@ -328,96 +329,33 @@ class Game:
 
         return ("pass",)
 
-    # ---- 动作处理器 ----
+    # ---- 动作处理器(委托 engine.apply 纯函数;行为不变,见计划 §3)----
 
     def _handle_tsumo(self, state: GameState, record: GameRecord,
                       seat: int, tile: int) -> None:
-        state.active[seat] = False
-        state.winners.append(seat)
-        hand_idx = state.hands[seat].to_indices()
-        melds_list = list(state.melds[seat])
-        lack = state.lack[seat]
-        state.win_details.append({
-            "seat": seat, "by": "tsumo", "tile": tile, "from": None,
-            "robbery": False, "hand": hand_idx, "melds": melds_list, "lack": lack,
-        })
-        record.events.append({
-            "t": "tsumo", "seat": seat, "tile": _code(tile),
-            "hand": _codes(hand_idx),
-            "melds": [make_meld_dict(m) for m in melds_list],
-            "lack": lack,
-        })
+        apply_tsumo(state, record, seat, tile)
 
     def _handle_ron(self, state: GameState, record: GameRecord,
                     seat: int, from_seat: int, tile: int, robbery: bool) -> None:
-        state.hands[seat] = state.hands[seat].add(tile)
-        state.active[seat] = False
-        state.winners.append(seat)
-        hand_idx = state.hands[seat].to_indices()
-        melds_list = list(state.melds[seat])
-        lack = state.lack[seat]
-        state.win_details.append({
-            "seat": seat, "by": "ron", "tile": tile, "from": from_seat,
-            "robbery": robbery, "hand": hand_idx, "melds": melds_list, "lack": lack,
-        })
-        record.events.append({
-            "t": "ron", "seat": seat, "from": from_seat, "tile": _code(tile),
-            "hand": _codes(hand_idx),
-            "melds": [make_meld_dict(m) for m in melds_list],
-            "lack": lack, "robbery": robbery,
-        })
+        apply_ron(state, record, seat, from_seat, tile, robbery)
 
     def _handle_discard(self, state: GameState, record: GameRecord,
                         seat: int, tile: int) -> None:
-        state.hands[seat] = state.hands[seat].remove(tile)
-        state.discards[seat].append(tile)
-        state.last_discard = (seat, tile)
-        record.events.append({"t": "discard", "seat": seat, "tile": _code(tile)})
+        apply_discard(state, record, seat, tile)
 
     def _handle_ankan(self, state: GameState, record: GameRecord,
                       seat: int, tile: int) -> None:
-        for _ in range(4):
-            state.hands[seat] = state.hands[seat].remove(tile)
-        state.melds[seat].append(Meld("ankan", tile, None))
-        record.events.append({"t": "kan", "seat": seat, "kind": "ankan", "tile": _code(tile)})
+        apply_ankan(state, record, seat, tile)
 
     def _handle_pon(self, state: GameState, record: GameRecord,
                     seat: int, from_seat: int, tile: int) -> None:
-        for _ in range(2):
-            state.hands[seat] = state.hands[seat].remove(tile)
-        state.melds[seat].append(Meld("pon", tile, from_seat))
-        record.events.append({"t": "pon", "seat": seat, "from": from_seat, "tile": _code(tile)})
+        apply_pon(state, record, seat, from_seat, tile)
 
     def _handle_daiminkan(self, state: GameState, record: GameRecord,
                           seat: int, from_seat: int, tile: int) -> None:
-        for _ in range(3):
-            state.hands[seat] = state.hands[seat].remove(tile)
-        state.melds[seat].append(Meld("daiminkan", tile, from_seat))
-        record.events.append({"t": "kan", "seat": seat, "kind": "daiminkan",
-                              "tile": _code(tile), "from": from_seat})
+        apply_daiminkan(state, record, seat, from_seat, tile)
 
     def _handle_shouminkan(self, state: GameState, record: GameRecord,
                            seat: int, tile: int) -> bool:
-        """补杠:先查抢杠。被抢返回 True(ron 成立,杠取消)。"""
-        others = [
-            (s, state.hands[s], state.lack[s], len(state.melds[s]))
-            for s in range(4) if s != seat and state.active[s]
-        ]
-        robbers = robbery_targets(others, tile)
-
-        if robbers:
-            # 杠取消:声明者暗手移除补杠牌(被抢者取走)
-            state.hands[seat] = state.hands[seat].remove(tile)
-            state.last_discard = None
-            for r in robbers:
-                self._handle_ron(state, record, r, seat, tile, robbery=True)
-            return True
-
-        # 杠成立:暗手移除 1 张,碰 -> 补杠
-        state.hands[seat] = state.hands[seat].remove(tile)
-        for i, m in enumerate(state.melds[seat]):
-            if m.kind == "pon" and m.tile == tile:
-                state.melds[seat][i] = Meld("shouminkan", tile, None)
-                break
-        record.events.append({"t": "kan", "seat": seat, "kind": "shouminkan", "tile": _code(tile)})
-        return False
+        """补杠:委托 apply_shouminkan(被抢返回 True,杠取消)。"""
+        return apply_shouminkan(state, record, seat, tile)
