@@ -21,6 +21,7 @@ dev = ["pytest>=8", "httpx>=0.27"]
 majiang-demo = "majiang_coach.demo:main"
 majiang-game = "majiang_coach.demo_game:main"
 majiang-practice = "majiang_coach.demo_practice:main"
+majiang-review = "majiang_coach.demo_review:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

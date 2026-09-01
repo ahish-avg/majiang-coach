@@ -7,8 +7,7 @@
 - **Phase 3**:Analysis Engine(硬计算,不依赖 LLM)——输入一个座位视角 `PlayerView`,输出结构化 JSON:手牌差张下叫/进张(含副露)、每张可弃牌的进攻期望 + 安全度 + 综合排序推荐。供 Phase 4 LLM 引用防幻觉、Phase 5 启发式 AI 消费、Phase 6 复盘复用。
 - **Phase 4**:可插拔 LLM 助手 + 提示开关--在 Phase 3 硬算之上,接 OpenAI 兼容 LLM(DeepSeek/豆包/本地等)解释推荐牌(进攻/防守理由 + 教学点 + 对手读牌),**强制引用注入数字防幻觉、不替打**;带 `hints_on` 开关,任何失败兜底硬算 `analysis`。
 - **Phase 5**:练习模式--人类(座0)+ 3 个启发式 AI 对手(座1-3,弱/中/强可配),完整血战到底;`PracticeSession` 为传输无关的可步进状态机,REST 轮次制交互;人类决策点暂停、AI 自动推进;开提示自动附 Phase 4 advise + on-demand 问教练。
-
-> Phase 5 完成后停下等用户确认再进 Phase 6。
+- **Phase 6**:复盘系统--输入一个 `GameRecord`(JSON 事件流牌谱),`ReviewCursor` 逐决策点增量回放、重建该座信息隔离的 `PlayerView`(暗手/副露/弃牌/缺门/牌墙/在局),每个摸牌决策点跑 Phase 3 `analyze`(硬算,纯函数确定性)+ 可选 Phase 4 `advise`(LLM,`hints_on` 开关,失败兜底硬算),弃牌后对可申索座产出 claim 步;全部点评用川麻口语,输出结构化 `ReviewResult`(逐步 steps + 按座汇总),`to_dict/from_dict` 往返一致。
 
 ## 术语约定(川麻口语,最终成品统一使用)
 
@@ -111,6 +110,12 @@ majiang-coach/
 │  │  ├─ prompt.py            # 当前提示构建(view+legal_actions+advise+hint)+ PendingDecision
 │  │  └─ store.py             # 内存会话存储(session_id -> session)+ idle TTL 清理
 │  ├─ demo_practice.py        # Phase 5 CLI:模拟人类(自动)跑一局练习,打印提示流/牌谱
+│  ├─ review/                 # Phase 6 复盘系统(纯函数,复用 Phase 3 analyze/Phase 4 advise)
+│  │  ├─ cursor.py            # ReviewCursor:事件流增量回放(与 replay() 一致)+ view(seat) + iter_draw_events
+│  │  ├─ result.py            # ReviewStep/ReviewResult + to_dict/from_dict 往返
+│  │  ├─ comment.py           # 川麻口语点评文案(第 N 巡/差 X 张下叫/叫牌/自摸/点炮/抢杠)
+│  │  └─ review.py            # review_record 编排(turn_action/claim/win/over 步 + 按座汇总)
+│  ├─ demo_review.py          # Phase 6 CLI:牌谱逐步回放 + AI 点评(支持 --file/--full/--hints/--seat)
 │  ├─ engine/                 # Phase 2 Game Engine(零依赖)
 │  │  ├─ wall.py              # TileWall:种子洗牌/发牌/摸牌/杠尾摸牌/流局
 │  │  ├─ melds.py             # Meld:碰/杠副露数据类
@@ -136,7 +141,7 @@ majiang-coach/
 │     ├─ provider.py          # chat:OpenAI 兼容 POST(urllib)+ LLMError(key 不泄露)
 │     ├─ result.py            # Advice / AdviseResult 数据类 + to_dict
 │     └─ advisor.py           # advise:编排+防幻觉校验+兜底链
-├─ api/main.py                # FastAPI: phase1/analyze + phase2/play + phase3/analyze + phase4/advise + phase5/session*
+├─ api/main.py                # FastAPI: phase1/analyze + phase2/play + phase3/analyze + phase4/advise + phase5/session* + phase6/review
 └─ tests/                     # 单元 + 集成测试
 ```
 
@@ -451,6 +456,95 @@ curl -X DELETE http://127.0.0.1:8000/api/phase5/session/{session_id}
 - 终局 `record`(完整事件流)供 Phase 6 复盘(逐步回放 + `make_view`->`analyze`/`advise` 点评)。
 - `HeuristicActor` 可复用于 Phase 8(对局批量生成/战绩统计)。
 
+## Phase 6 复盘系统(牌谱逐步回放 + AI 点评)
+
+输入一个 `GameRecord`(JSON 事件流,来源 phase2/play 或 phase5 终局),输出结构化 `ReviewResult`:逐决策点重建该座可见的信息隔离 `PlayerView`(不含他家暗手),每个摸牌决策点跑 Phase 3 `analyze`(硬算,纯函数确定性)+ 可选 Phase 4 `advise`(LLM,`hints_on` 开关);弃牌后对每个可申索他座产出 claim 步;所有用户可见文案用川麻口语。核心纯函数、零新第三方依赖、不改动既有模块行为。
+
+### 逐步回放原理
+- **`ReviewCursor(record)`**:逐事件增量重建局内状态(counts[4][27]/melds/discards/lack/winners/active),事件处理逻辑与 `engine/record.replay()` 完全一致(deal/swap/lack/draw/discard/pon/kan/kan_draw/tsumo/ron/ryuukyoku;一炮多响 `claimed` 只扣一次弃牌;抢杠从声明者暗手扣牌;补杠就地替换 pon)。`final_state()` 与 `replay(record)` 逐字段相等(测试锚点)。
+- 额外追踪:`wall_remaining`(初始 108,每个 `deal` 事件扣发牌数、每个 `draw`/`kan_draw` 扣 1;发牌 4×13 后余 56)、`turn`(巡目 = discard 计数)、`last_discard`=(src, tile)(discard 后置位,draw/kan_draw/申索后清空)。每步张数守恒 `暗手+副露+弃牌+牌墙 == 108`。
+- `view(seat)` 镜像 `GameState.make_view`:`Hand.from_counts(counts)` + `Meld` 副露 + `lack_suits`/`public_melds`/`discards`/`active_seats`/`winners` 全填;序列化直接复用 `practice/prompt.py` 的 `view_to_dict()`(review/ 只 import 公共 API,不改既有模块)。
+- `iter_draw_events()`:每个 `draw`/`kan_draw` 产出一个 (event_index, seat, drawn_tile) 决策点(该座 14-3×melds 张刚摸待弃态)。
+
+### ReviewResult schema
+
+```jsonc
+{
+  "meta": { /* GameRecord.meta 原样转发:seed/version/ruleset/lack/... */ },
+  "summary": {
+    "num_steps": 70,
+    "per_seat": { "0": {"turn_steps": 14, "matched_actual": 6, "win_by": null, "claims": 2}, ... },
+    "events": {"deal": 4, "draw": 52, "discard": 51, "pon": 3, "ron": 1, ...}
+  },
+  "steps": [
+    {
+      "step": 1, "event_index": 9, "phase": "turn_action", "seat": 0, "tile": "7m",
+      "hand_total": 14,
+      "actual_action": {"kind": "discard", "tile": "6s"},   // 该事件后实战动作
+      "view": { /* view_to_dict(PlayerView),信息隔离 */ },
+      "analysis": { /* Phase 3 AnalysisResult.to_dict(硬算,始终在) */ },
+      "advice": null,          // hints_on=true 时为 AdviseResult.to_dict();失败 advice=null+error
+      "comment": "第 1 巡,摸 7m。差 4 张下叫。硬算推荐打 8s(综合 85)。推荐打 8s,实际打 6s。"
+    },
+    { "step": 4, "phase": "claim", "seat": 3, "tile": "1s", ...,
+      "comment": "座2打 1s。可以碰(碰后差 4 张下叫)。" },
+    { "step": 60, "phase": "win", "seat": 0, "actual_action": {"kind": "ron", "tile": "9m", ...},
+      "comment": "点炮(座1)胡 9m!(不算番,番种留 Phase 7)" },
+    { "step": 70, "phase": "over", "seat": -1, "comment": "牌墙摸完,流局。" }
+  ]
+}
+```
+
+- **phase**:`turn_action`(刚摸待弃,14 张)/`claim`(他人弃牌可申索,13 张,`legal_claims` 非空才产出,无纯 pass 噪音)/`win`(tsumo/ron)/`over`(流局)。
+- **actual_action**:turn_action 取 draw 后下一事件(discard/ankan/shouminkan/tsumo;补杠被抢记 shouminkan);claim 步取申索窗口内该座是否 pon/daiminkan/ron,未申索为 null。实际弃牌 == 硬算 `recommend.code` 计 matched_actual。
+- **advice**:`hints_on=false` 恒 null;`hints_on=true` 每 turn_action 步调 Phase 4 `advise`(假 LLM/无配置时 `advice.advice=null + error`,`analysis` 始终在;防幻觉拦截路径不变)。claim/win/over 步不调 LLM。
+- **汇总**:`per_seat` 每座 turn_steps(决策次数)/matched_actual(与硬算一致)/win_by(tsumo/ron/null)/claims(可申索步数);`events` 为事件计数。
+- 确定性:`hints_on=false` 同一 record -> `to_dict()` 全等;`to_dict`/`from_dict` 往返一致。
+- **信息隔离**:点评只基于该座 `PlayerView`(过程事件不泄露他家暗手),复用 `replay()` 隔离语义。
+- LLM 成本:`hints_on` 时每决策点各调一次 LLM;v0 接受,后续可做批量/按需优化。
+
+### Phase 6 CLI demo
+
+```bash
+# 内跑一局(4 随机 AI)逐步点评 + 按座汇总
+python -m majiang_coach.demo_review 42
+
+# 只点评座 0;开 LLM 提示(需 .env 配置;无配置自动兜底硬算)
+python -m majiang_coach.demo_review 42 --seat 0
+python -m majiang_coach.demo_review 42 --hints
+
+# 输出完整 ReviewResult JSON
+python -m majiang_coach.demo_review 42 --full
+
+# 直接读牌谱 JSON(phase2/phase5 产物)
+python -m majiang_coach.demo_review --file record.json
+```
+
+### Phase 6 API demo
+
+```bash
+pip install -e ".[api]"
+uvicorn api.main:app --reload
+```
+
+```bash
+# 1. 种子复盘(seed 用 phase2 同款 Game 生成一局)
+curl -X POST http://127.0.0.1:8000/api/phase6/review \
+  -H "Content-Type: application/json" -d '{"seed":42}'
+
+# 2. 直接贴牌谱;可带 hints_on/weights/seat_focus/llm
+curl -X POST http://127.0.0.1:8000/api/phase6/review \
+  -H "Content-Type: application/json" \
+  -d '{"record":{...},"hints_on":true,"seat_focus":0,"weights":{"offense":0.6,"defense":0.4}}'
+```
+
+- 请求体:`{record | seed, hints_on=false, llm?:{base_url,api_key,model}, weights?, seat_focus?}`;record 与 seed 二选一(都给/都缺 -> 400);非法牌谱(缺 events/非法牌码)-> 400。
+- 响应 = `ReviewResult.to_dict()`;`api_key` 经 `resolve_llm_config` 处理,不入日志、不回显。
+
+### 与 Phase 7 的衔接
+- win 步点评为占位「不算番,番种留 Phase 7」:胡牌事实(自摸/点炮/抢杠/胡牌张/副露数)已在 `actual_action` 与牌谱 `result` 中齐备,Phase 7 番种算分直接消费。
+- `ReviewCursor.final_state()` 与 `replay()` 锚定,后续复盘落库/WS 实时复盘可在 cursor 上扩展。
+
 
 ## API 语义说明
 
@@ -523,3 +617,15 @@ curl -X DELETE http://127.0.0.1:8000/api/phase5/session/{session_id}
 - [x] README Phase 5 文档
 
 **Phase 5 完成。** 测试全绿(Phase 1+2+3+4 + Phase 5 新增,780 passed)。等待确认后进 Phase 6(复盘系统:牌谱逐步回放 + AI 点评,复用 Phase 3 `analyze`/Phase 4 `advise`)。
+
+### Phase 6:复盘系统(牌谱逐步回放 + AI 点评)
+- [x] review/cursor.py(ReviewCursor:事件流增量回放,与 replay() 一致;wall_remaining/turn/last_discard 追踪;view(seat) 镜像 make_view;iter_draw_events;每步 108 守恒)
+- [x] review/result.py(ReviewStep/ReviewResult + to_dict/from_dict 往返一致)
+- [x] review/comment.py(川麻口语:差 X 张下叫/已下叫列叫牌/推荐与实战比对/可胡可碰/自摸点炮抢杠)
+- [x] review/review.py(review_record 编排:turn_action/claim/win/over 步;analyze+可选 advise;actual_action 匹配;seat_focus;按座汇总;确定性)
+- [x] review/__init__.py 聚合
+- [x] demo_review.py(CLI;--file/--full/--hints/--seat)+ pyproject `majiang-review` 入口
+- [x] api/main.py POST /api/phase6/review(record|seed 二选一;非法牌谱 400)+ version 0.4.0 + 根端点
+- [x] README Phase 6 文档
+
+**Phase 6 完成。** 测试全绿(Phase 1-5 回归 + Phase 6 新增 test_review_cursor/test_review_comment/test_review/test_review_api,846 passed, 3 skipped)。

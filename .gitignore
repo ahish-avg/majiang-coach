@@ -29,3 +29,6 @@ Thumbs.db
 # Local tooling / artifacts
 .kilo/
 .playwright-mcp/
+
+# Unrelated local tool data (deeptutor etc.)
+data/user/

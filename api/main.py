@@ -1,4 +1,4 @@
-"""FastAPI demo:Phase 1 分析 + Phase 2 跑局牌谱。
+"""FastAPI demo:Phase 1 分析 + Phase 2 跑局牌谱 + Phase 3-6 分析与复盘。
 
 核心算法层零第三方依赖;仅本模块依赖 fastapi/pydantic,便于后续迁移小程序后端。
 
@@ -29,11 +29,12 @@ from majiang_coach.llm import advise as llm_advise, resolve_llm_config
 from majiang_coach.practice import (
     PracticeSession, SessionStore, IllegalActionError, action_from_dict,
 )
+from majiang_coach.review import review_record as phase6_review_record
 
 _LACK_LETTER_TO_INT = {"m": 0, "s": 1, "p": 2}
 _SUIT_NAME = {0: "万", 1: "条", 2: "筒"}
 
-app = FastAPI(title="majiang-coach", version="0.3.0")
+app = FastAPI(title="majiang-coach", version="0.4.0")
 
 # Phase 5 内存会话存储(单进程 demo)
 _phase5_store = SessionStore()
@@ -67,10 +68,10 @@ class AnalyzeResponse(BaseModel):
 def root() -> dict:
     return {
         "name": "majiang-coach",
-        "version": "0.3.0",
+        "version": "0.4.0",
         "endpoints": [
             "/api/phase1/analyze", "/api/phase2/play", "/api/phase3/analyze",
-            "/api/phase4/advise", "/api/phase5/session",
+            "/api/phase4/advise", "/api/phase5/session", "/api/phase6/review",
         ],
     }
 
@@ -388,3 +389,45 @@ def delete_session(sid: str) -> dict:
         raise HTTPException(status_code=404, detail="会话不存在或已过期")
     _phase5_store.delete(sid)
     return {"deleted": sid}
+
+
+# ---- Phase 6: 复盘系统(牌谱逐步回放 + AI 点评)----
+
+class ReviewRequest(BaseModel):
+    record: dict | None = Field(None, description="牌谱 JSON(meta+events+result);与 seed 二选一")
+    seed: int | None = Field(None, description="随机种子;无 record 时用 phase2 同款 Game 生成一局")
+    hints_on: bool = Field(False, description="开提示:每决策点调 Phase 4 advise(LLM);失败兜底硬算")
+    llm: LLMOverride | None = Field(None, description="LLM 配置覆盖(优先级 请求>.env)")
+    weights: dict | None = Field(None, description='analyze 权重 {"offense":0.6,"defense":0.4}')
+    seat_focus: int | None = Field(None, description="只点评该座(默认全部 4 座)")
+
+
+@app.post("/api/phase6/review")
+def review6(req: ReviewRequest) -> dict:
+    """复盘:牌谱逐步回放 + AI 点评 -> ReviewResult.to_dict()。
+
+    record 与 seed 二选一;非法 record -> 400。api_key 不入日志、不回显。
+    """
+    if (req.record is None) == (req.seed is None):
+        raise HTTPException(status_code=400, detail="record 与 seed 须二选一")
+    if req.record is not None:
+        if not isinstance(req.record.get("events"), list):
+            raise HTTPException(status_code=400, detail="record 缺 events 列表")
+        record = req.record
+    else:
+        actors = [RandomActor(req.seed * 4 + i) for i in range(4)]  # type: ignore[operator]
+        record = Game(actors, req.seed).run()  # type: ignore[arg-type]
+
+    override = req.llm.model_dump() if req.llm is not None else None
+    llm_config = resolve_llm_config(override)
+    try:
+        result = phase6_review_record(
+            record,
+            hints_on=req.hints_on,
+            llm_config=llm_config,
+            weights=req.weights,
+            seat_focus=req.seat_focus,
+        )
+    except (ValueError, KeyError, IndexError) as e:
+        raise HTTPException(status_code=400, detail=f"非法牌谱: {e}")
+    return result.to_dict()
