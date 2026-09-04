@@ -1,0 +1,10 @@
+.hand {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.hand-small {
+  transform: scale(0.64);
+  transform-origin: left center;
+}

@@ -1,0 +1,244 @@
+<view class="practice-page">
+
+  <view class="loading-card card" wx:if="{{loading}}">
+    <view class="card-title">正在开局…</view>
+    <view class="muted">AI 对手就位中</view>
+  </view>
+
+  <view class="loading-card card" wx:elif="{{loadError}}">
+    <view class="card-title">开局失败</view>
+    <view class="muted">请检查 API 地址与网络后重试</view>
+    <button class="btn btn-primary btn-block" bindtap="onRetryLoad">重试</button>
+  </view>
+
+  <block wx:elif="{{gameOver}}">
+    <view class="card settle-card">
+      <view class="settle-title">本局结算</view>
+      <view class="settle-tag tag {{summary.drawn ? 'tag-green' : 'tag-gold'}}">{{summary.drawn ? '流局' : '终局'}}</view>
+      <block wx:if="{{summary.winners.length}}">
+        <view class="settle-line" wx:for="{{summary.winners}}" wx:key="seat">
+          <text class="settle-seat">座{{item.seat}}</text>
+          <text>{{item.by === 'tsumo' ? '自摸' : '点炮'}}</text>
+          <tile code="{{item.tile}}" small="{{true}}" />
+          <text class="muted" wx:if="{{item.from !== null && item.from !== undefined}}">点炮：座{{item.from}}</text>
+        </view>
+      </block>
+      <view class="settle-line muted" wx:else>流局：无人胡牌</view>
+      <view class="settle-line" wx:for="{{summary.losers}}" wx:key="seat">
+        <text class="settle-seat">座{{item.seat}}</text>
+        <text class="tag tag-red" wx:if="{{item.huazhu}}">花猪</text>
+      </view>
+      <view class="muted seed-line">牌局种子：{{summary.seed}}</view>
+    </view>
+
+    <view class="card settle-card" wx:if="{{settleError}}">
+      <view class="card-title">算分失败</view>
+      <button class="btn btn-primary btn-block" bindtap="onRetryScore">重试算分</button>
+    </view>
+
+    <view class="card settle-card" wx:elif="{{settle}}">
+      <view class="card-title">
+        番种算分
+        <text class="tag tag-gold settle-head-tag">{{settle.drawn ? '流局' : '终局'}}</text>
+      </view>
+      <view class="settle-line">底分：{{settle.baseScore}}</view>
+
+      <block wx:for="{{settle.wins}}" wx:key="key">
+        <view class="settle-block">
+          <view class="settle-line settle-strong">
+            <text class="settle-seat">座{{item.seat}}</text>
+            <text>{{item.by === 'tsumo' ? '自摸' : '点炮'}}</text>
+            <tile code="{{item.tile}}" small="{{true}}" />
+          </view>
+          <view class="settle-line fan-line" wx:for="{{item.fanItems}}" wx:for-item="fan" wx:key="key">
+            <text class="tag">{{fan.name}} {{fan.fan}}番</text>
+            <text class="muted fan-basis" wx:if="{{fan.basis}}">{{fan.basis}}</text>
+          </view>
+          <view class="settle-line muted">
+            合计 {{item.totalFan}} 番 · {{item.multiplier}} 倍<text wx:if="{{item.capApplied}}">（已封顶）</text>
+          </view>
+          <view class="settle-line">付款：{{item.pay}}</view>
+        </view>
+      </block>
+
+      <view class="settle-block" wx:if="{{settle.kans.length}}">
+        <view class="settle-sub">杠钱</view>
+        <view class="settle-line" wx:for="{{settle.kans}}" wx:key="key">
+          <text class="tag tag-green">杠</text>
+          <text class="settle-seat">座{{item.seat}}</text>
+          <text>{{item.kindLabel}}</text>
+          <tile code="{{item.tile}}" small="{{true}}" />
+          <text class="muted">{{item.pay}}</text>
+        </view>
+      </view>
+
+      <view class="settle-block" wx:if="{{settle.tenpais.length}}">
+        <view class="settle-sub">流局查叫</view>
+        <view class="settle-line" wx:for="{{settle.tenpais}}" wx:key="key">
+          <text>座{{item.payer}} 赔 座{{item.waitSeat}}</text>
+          <view class="row wait-tiles">
+            <tile wx:for="{{item.waitTiles}}" wx:for-item="t" wx:key="*this" code="{{t}}" small="{{true}}" />
+          </view>
+          <text class="muted">理论 {{item.maxFan}} 番 {{item.multiplier}} 倍，赔 {{item.amount}}</text>
+        </view>
+      </view>
+
+      <view class="settle-block" wx:if="{{settle.huazhus.length}}">
+        <view class="settle-sub">查花猪</view>
+        <view class="settle-line" wx:for="{{settle.huazhus}}" wx:key="key">
+          <text class="tag tag-red">花猪</text>
+          <text>座{{item.huazhuSeat}} 赔 座{{item.payee}}</text>
+          <text class="muted">顶格 {{item.amount}}</text>
+        </view>
+      </view>
+
+      <view class="score-table">
+        <view class="score-row" wx:for="{{settle.perSeat}}" wx:key="seat">
+          <text class="settle-seat">座{{item.seat}}</text>
+          <text class="score-val {{item.pos ? 'score-pos' : ''}} {{item.neg ? 'score-neg' : ''}}">{{item.value}}</text>
+        </view>
+        <view class="score-row score-total">
+          <text>合计</text>
+          <text class="score-val">{{settle.total}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="card settle-card">
+      <button class="btn btn-primary btn-block" bindtap="onReview">查看复盘</button>
+      <button class="btn btn-block" bindtap="onNewGame">再来一局</button>
+      <button class="btn btn-block" bindtap="onGoHome">返回首页</button>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="phase-bar card">
+      <text class="tag tag-gold">{{phaseLabel}}</text>
+      <text class="muted phase-hint" wx:if="{{submitting}}">处理中…</text>
+      <view class="spacer"></view>
+      <button class="btn btn-coach" bindtap="onAskCoach" disabled="{{adviseLoading || submitting}}">问教练</button>
+    </view>
+
+    <board view="{{view}}" drawnCode="{{drawnCode}}">
+      <view slot="actions" class="action-bar">
+
+        <block wx:if="{{phase === 'swap'}}">
+          <hand
+            class="action-hand"
+            tiles="{{handTiles}}"
+            selected="{{selected}}"
+            interactive="{{true}}"
+            bind:tiletap="onTileTap"
+          />
+          <view class="action-hint muted">请选 3 张同门牌</view>
+          <button
+            class="btn btn-primary btn-block action-btn"
+            disabled="{{!swapReady || submitting}}"
+            bindtap="onSwapSubmit"
+          >换三张(选3张同门)</button>
+        </block>
+
+        <block wx:elif="{{phase === 'lack'}}">
+          <view class="btn-grid">
+            <button
+              class="btn btn-danger"
+              wx:for="{{lackButtons}}"
+              wx:key="suit"
+              data-suit="{{item.suit}}"
+              bindtap="onLack"
+              disabled="{{submitting}}"
+            >{{item.label}}</button>
+          </view>
+        </block>
+
+        <block wx:elif="{{phase === 'turn_action'}}">
+          <hand
+            class="action-hand"
+            tiles="{{handTiles}}"
+            selected="{{[]}}"
+            highlightCode="{{highlightCode}}"
+            interactive="{{true}}"
+            bind:tiletap="onTileTap"
+          />
+          <view class="action-hint muted">点击手牌打出（缺门牌不可打）</view>
+          <view class="btn-grid">
+            <button
+              class="btn {{item.kind === 'tsumo' ? 'btn-danger' : (item.kind === 'pass' ? 'btn-ghost' : 'btn-primary')}}"
+              wx:for="{{buttons}}"
+              wx:key="key"
+              data-action="{{item.action}}"
+              bindtap="onButton"
+              disabled="{{submitting}}"
+            >{{item.label}}</button>
+          </view>
+        </block>
+
+        <block wx:elif="{{phase === 'claim' || phase === 'robbery'}}">
+          <view class="claim-info" wx:if="{{lastDiscard}}">
+            <text class="muted">最后弃牌：座{{lastDiscard.src}}</text>
+            <tile code="{{lastDiscard.tile}}" small="{{true}}" />
+          </view>
+          <view class="btn-grid">
+            <button
+              class="btn {{(item.kind === 'ron' || item.kind === 'ronkan') ? 'btn-danger' : (item.kind === 'pass' ? 'btn-ghost' : 'btn-primary')}}"
+              wx:for="{{buttons}}"
+              wx:key="key"
+              data-action="{{item.action}}"
+              bindtap="onButton"
+              disabled="{{submitting}}"
+            >{{item.label}}</button>
+          </view>
+        </block>
+
+      </view>
+    </board>
+
+    <view class="card advise-card" wx:if="{{adv && (adv.recommendCode || adv.error)}}">
+      <view class="card-title">
+        教练建议
+        <text class="tag tag-gold" wx:if="{{adv.hasLlm && adv.modelUsed}}">{{adv.modelUsed}}</text>
+      </view>
+      <view class="muted advise-error" wx:if="{{adv.error}}">教练暂不可用：{{adv.error}}</view>
+      <block wx:elif="{{adv.hasLlm && adv.llm}}">
+        <view class="advise-line">
+          <text class="advise-label">推荐打</text>
+          <tile code="{{adv.llm.recommended_tile}}" small="{{true}}" />
+        </view>
+        <view class="advise-item" wx:if="{{adv.llm.offense_reason}}">
+          <text class="advise-label">进攻理由：</text>{{adv.llm.offense_reason}}
+        </view>
+        <view class="advise-item" wx:if="{{adv.llm.defense_reason}}">
+          <text class="advise-label">防守理由：</text>{{adv.llm.defense_reason}}
+        </view>
+        <view class="advise-item" wx:if="{{adv.llm.teaching_point}}">
+          <text class="advise-label">教学点：</text>{{adv.llm.teaching_point}}
+        </view>
+        <view class="advise-item" wx:if="{{adv.llm.opponent_read}}">
+          <text class="advise-label">读牌：</text>{{adv.llm.opponent_read}}
+        </view>
+      </block>
+      <block wx:elif="{{adv.hard}}">
+        <view class="advise-line" wx:if="{{adv.hard.code}}">
+          <text class="advise-label">推荐</text>
+          <tile code="{{adv.hard.code}}" small="{{true}}" />
+        </view>
+        <view class="advise-item" wx:if="{{adv.hard.shanten_after !== null && adv.hard.shanten_after !== undefined}}">
+          <text class="advise-label">向听后：</text>{{adv.hard.shanten_after}}
+        </view>
+        <view class="advise-item">
+          <text class="advise-label">听牌：</text>{{adv.hard.is_tenpai_after ? '是' : '否'}}
+        </view>
+        <view class="advise-item" wx:if="{{adv.hard.ukeire_count !== null && adv.hard.ukeire_count !== undefined}}">
+          <text class="advise-label">有效牌数：</text>{{adv.hard.ukeire_count}}
+        </view>
+        <view class="advise-item" wx:if="{{adv.hard.composite_score !== null && adv.hard.composite_score !== undefined}}">
+          <text class="advise-label">综合分：</text>{{adv.hard.composite_score}}
+        </view>
+        <view class="advise-item" wx:if="{{adv.hard.danger !== null && adv.hard.danger !== undefined}}">
+          <text class="advise-label">危险度：</text>{{adv.hard.danger}}
+        </view>
+      </block>
+    </view>
+  </block>
+
+</view>

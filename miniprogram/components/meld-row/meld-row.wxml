@@ -1,0 +1,15 @@
+<view class="meld-row" wx:if="{{groups.length}}">
+  <view class="meld-group" wx:for="{{groups}}" wx:key="key">
+    <view class="meld-label tag tag-green">{{item.label}}</view>
+    <view class="meld-tiles">
+      <tile
+        wx:for="{{item.tiles}}"
+        wx:for-item="t"
+        wx:key="key"
+        code="{{t.code}}"
+        small="{{true}}"
+        faceDown="{{t.code === 'back'}}"
+      />
+    </view>
+  </view>
+</view>

@@ -1,0 +1,48 @@
+<view class="page-home">
+  <view class="title-big">川麻血战教练</view>
+  <view class="subtitle muted">四川麻将 · 血战到底 · AI 陪练与复盘</view>
+
+  <view class="card">
+    <view class="card-title">开始练习</view>
+    <view class="row row-between form-line">
+      <text>AI 强度</text>
+      <view class="seg">
+        <view
+          wx:for="{{strengths}}"
+          wx:key="key"
+          class="seg-item {{strength === item.key ? 'on' : ''}}"
+          data-key="{{item.key}}"
+          bindtap="onPickStrength"
+        >{{item.label}}</view>
+      </view>
+    </view>
+    <view class="row row-between form-line">
+      <text>开启 AI 提示</text>
+      <switch checked="{{hintsOn}}" bindchange="onHintsChange" color="#e8b33b" />
+    </view>
+    <button class="btn btn-primary btn-block" bindtap="onStartPractice">开始练习</button>
+  </view>
+
+  <view class="card">
+    <view class="card-title">复盘</view>
+    <view class="row form-line">
+      <input
+        class="input seed-input"
+        type="number"
+        placeholder="输入牌局种子号"
+        value="{{seed}}"
+        bindinput="onSeedInput"
+      />
+    </view>
+    <button class="btn btn-primary btn-block" bindtap="onReview">复盘这局</button>
+  </view>
+
+  <view class="card">
+    <button class="btn btn-block" bindtap="onSettings">设置</button>
+  </view>
+
+  <view class="card">
+    <view class="card-title">关于</view>
+    <view class="muted about-text">牌面资源：Mahjong tile SVG by perthmahjongsoc（源自 Cangjie6 等，Wikimedia Commons），CC BY-SA 4.0</view>
+  </view>
+</view>

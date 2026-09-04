@@ -1,0 +1,39 @@
+.seat-block {
+  padding: 12rpx;
+  border-radius: 16rpx;
+  background-color: rgba(0, 0, 0, 0.18);
+}
+.seat-block.inactive {
+  opacity: 0.45;
+}
+.seat-block.compact {
+  padding: 8rpx;
+}
+.seat-head {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 6rpx;
+}
+.seat-name {
+  font-weight: 700;
+  margin-right: 10rpx;
+  font-size: 26rpx;
+}
+.seat-hand {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  min-height: 60rpx;
+}
+.seat-block.compact .seat-hand {
+  min-height: 40rpx;
+}
+.river {
+  margin-top: 10rpx;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  min-height: 40rpx;
+}

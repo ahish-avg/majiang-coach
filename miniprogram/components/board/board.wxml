@@ -1,0 +1,29 @@
+<view class="board" wx:if="{{m}}">
+  <view class="board-top">
+    <seat-block model="{{m.seats.top}}" compact="{{true}}" />
+  </view>
+  <view class="board-mid">
+    <view class="board-side board-left">
+      <seat-block model="{{m.seats.left}}" compact="{{true}}" />
+    </view>
+    <view class="board-center card">
+      <view class="wall-line">
+        <text class="tag tag-gold">牌墙剩余 {{m.wallRemaining}}</text>
+      </view>
+      <view class="last-line" wx:if="{{m.lastDiscard}}">
+        <text class="muted">最近弃牌：座{{m.lastDiscard.src}}</text>
+        <tile code="{{m.lastDiscard.tile}}" small="{{true}}" />
+      </view>
+      <view class="last-line muted" wx:else>最近弃牌：无</view>
+      <view class="actions-slot">
+        <slot name="actions"></slot>
+      </view>
+    </view>
+    <view class="board-side board-right">
+      <seat-block model="{{m.seats.right}}" compact="{{true}}" />
+    </view>
+  </view>
+  <view class="board-bottom">
+    <seat-block model="{{m.seats.bottom}}" />
+  </view>
+</view>

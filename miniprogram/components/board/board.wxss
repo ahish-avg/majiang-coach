@@ -1,0 +1,53 @@
+.board {
+  display: flex;
+  flex-direction: column;
+}
+.board-top {
+  margin: 10rpx 24rpx;
+}
+.board-mid {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  margin: 10rpx 24rpx;
+}
+.board-side {
+  flex: 1;
+  min-width: 0;
+}
+.board-left {
+  margin-right: 12rpx;
+}
+.board-right {
+  margin-left: 12rpx;
+}
+.board-center {
+  width: 280rpx;
+  flex-shrink: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20rpx;
+}
+.wall-line {
+  margin-bottom: 10rpx;
+}
+.last-line {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 10rpx;
+}
+.actions-slot {
+  width: 100%;
+  margin-top: 12rpx;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.board-bottom {
+  margin: 10rpx 24rpx;
+}

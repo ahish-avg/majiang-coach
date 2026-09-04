@@ -1,0 +1,8 @@
+{
+  "component": true,
+  "usingComponents": {
+    "hand": "../hand/hand",
+    "meld-row": "../meld-row/meld-row",
+    "tile": "../tile/tile"
+  }
+}

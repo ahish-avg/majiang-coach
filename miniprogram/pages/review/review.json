@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "复盘",
+  "usingComponents": {
+    "board": "/components/board/board",
+    "tile": "/components/tile/tile"
+  }
+}

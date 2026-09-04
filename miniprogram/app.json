@@ -1,0 +1,15 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/practice/practice",
+    "pages/review/review",
+    "pages/settings/settings"
+  ],
+  "window": {
+    "navigationBarTitleText": "川麻血战教练",
+    "navigationBarBackgroundColor": "#0b5c36",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#0b5c36"
+  },
+  "style": "v2"
+}

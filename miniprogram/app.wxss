@@ -1,0 +1,129 @@
+page {
+  background-color: #0b5c36;
+  color: #f5f1e6;
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang SC", sans-serif;
+  font-size: 28rpx;
+}
+
+.btn {
+  display: inline-block;
+  padding: 18rpx 36rpx;
+  border-radius: 14rpx;
+  background-color: #f5f1e6;
+  color: #14391f;
+  font-size: 30rpx;
+  text-align: center;
+  line-height: 1.4;
+  border: none;
+}
+.btn::after {
+  border: none;
+}
+.btn-primary {
+  background-color: #e8b33b;
+  color: #3a2a06;
+  font-weight: 600;
+}
+.btn-danger {
+  background-color: #c0392b;
+  color: #fff5f0;
+}
+.btn-block {
+  display: block;
+  width: 100%;
+  margin-top: 20rpx;
+}
+
+.card {
+  background-color: rgba(0, 0, 0, 0.28);
+  border-radius: 20rpx;
+  padding: 28rpx;
+  margin: 24rpx;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.25);
+}
+.card-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  margin-bottom: 16rpx;
+}
+
+.row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.row-between {
+  justify-content: space-between;
+}
+.spacer {
+  flex: 1;
+}
+
+.tag {
+  display: inline-block;
+  padding: 4rpx 16rpx;
+  border-radius: 20rpx;
+  font-size: 22rpx;
+  line-height: 1.6;
+  background-color: rgba(255, 255, 255, 0.18);
+  color: #f5f1e6;
+  margin: 4rpx 6rpx 4rpx 0;
+}
+.tag-gold {
+  background-color: #e8b33b;
+  color: #3a2a06;
+}
+.tag-red {
+  background-color: #c0392b;
+  color: #fff;
+}
+.tag-green {
+  background-color: #1e8e54;
+  color: #eafff2;
+}
+
+.muted {
+  color: rgba(245, 241, 230, 0.6);
+  font-size: 24rpx;
+}
+
+.input {
+  background-color: rgba(255, 255, 255, 0.92);
+  color: #14391f;
+  border-radius: 10rpx;
+  padding: 14rpx 20rpx;
+  font-size: 28rpx;
+}
+
+.title-big {
+  font-size: 48rpx;
+  font-weight: 800;
+  text-align: center;
+  margin-top: 40rpx;
+  letter-spacing: 4rpx;
+}
+.subtitle {
+  text-align: center;
+  margin: 12rpx 0 8rpx;
+}
+
+.seg {
+  display: flex;
+  border-radius: 12rpx;
+  overflow: hidden;
+  border: 2rpx solid rgba(245, 241, 230, 0.5);
+}
+.seg-item {
+  flex: 1;
+  text-align: center;
+  padding: 16rpx 0;
+  color: #f5f1e6;
+  background-color: transparent;
+  font-size: 28rpx;
+}
+.seg-item.on {
+  background-color: #e8b33b;
+  color: #3a2a06;
+  font-weight: 700;
+}

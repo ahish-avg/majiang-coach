@@ -1,0 +1,12 @@
+<view class="hand {{small ? 'hand-small' : ''}}">
+  <block wx:for="{{items}}" wx:key="key">
+    <tile
+      code="{{item.code}}"
+      selected="{{item.selected}}"
+      highlight="{{item.highlight}}"
+      faceDown="{{item.faceDown}}"
+      small="{{item.small}}"
+      bind:tap="onTileTap"
+    />
+  </block>
+</view>

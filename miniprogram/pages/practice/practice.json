@@ -1,0 +1,9 @@
+{
+  "usingComponents": {
+    "board": "/components/board/board",
+    "hand": "/components/hand/hand",
+    "tile": "/components/tile/tile",
+    "meld-row": "/components/meld-row/meld-row"
+  },
+  "navigationBarTitleText": "实战练习"
+}

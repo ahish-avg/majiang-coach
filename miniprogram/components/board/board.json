@@ -1,0 +1,7 @@
+{
+  "component": true,
+  "usingComponents": {
+    "seat-block": "../seat-block/seat-block",
+    "tile": "../tile/tile"
+  }
+}

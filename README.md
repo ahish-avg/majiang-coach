@@ -8,6 +8,9 @@
 - **Phase 4**:可插拔 LLM 助手 + 提示开关--在 Phase 3 硬算之上,接 OpenAI 兼容 LLM(DeepSeek/豆包/本地等)解释推荐牌(进攻/防守理由 + 教学点 + 对手读牌),**强制引用注入数字防幻觉、不替打**;带 `hints_on` 开关,任何失败兜底硬算 `analysis`。
 - **Phase 5**:练习模式--人类(座0)+ 3 个启发式 AI 对手(座1-3,弱/中/强可配),完整血战到底;`PracticeSession` 为传输无关的可步进状态机,REST 轮次制交互;人类决策点暂停、AI 自动推进;开提示自动附 Phase 4 advise + on-demand 问教练。
 - **Phase 6**:复盘系统--输入一个 `GameRecord`(JSON 事件流牌谱),`ReviewCursor` 逐决策点增量回放、重建该座信息隔离的 `PlayerView`(暗手/副露/弃牌/缺门/牌墙/在局),每个摸牌决策点跑 Phase 3 `analyze`(硬算,纯函数确定性)+ 可选 Phase 4 `advise`(LLM,`hints_on` 开关,失败兜底硬算),弃牌后对可申索座产出 claim 步;全部点评用川麻口语,输出结构化 `ReviewResult`(逐步 steps + 按座汇总),`to_dict/from_dict` 往返一致。
+- **Phase 7**:番种算分 + 完整结算(成都血战标准)--`scoring/` 纯函数零依赖:番种识别 `fan_of`(牌型番 + 事件番 + 根,封顶 5 番 16 倍)、事件流上下文 `scan_win_contexts`(杠上开花/杠上炮/抢杠/海底/天胡/地胡)、`settle_record` 逐胡结算(自摸三家/点炮单付/一炮多响)+ 杠钱(直/补/暗,抢杠不收)+ 流局查叫(听牌理论最大番)+ 查花猪(顶格 ×3),四座收付累计恒满足 `sum==0`。Phase 6 win 步点评同步接入实际番种/倍数。
+
+- **Phase 8**:微信小程序前端(微信原生 WXML/WXSS/JS,无框架无构建链)--miniprogram/ 纯消费后端 JSON:首页(选 AI 强度/提示开关/种子复盘入口/设置)+ 练习牌桌(座0在下牌面 SVG 手牌可点选,他家牌背,缺门/胡/在局角标,牌墙剩余,最近弃牌高亮;换三张/定缺/摸打碰杠胡/抢杠 5 类决策点按钮全部来自 legal_actions;问教练 + 硬算 hint 降级)+ 终局结算屏(番种/倍数/封顶/收付/杠钱/查叫/查花猪/四座累计红绿分,sum 守恒)+ 复盘时间线(逐步川麻点评 + 牌面快照 + win 步番种 + 按座汇总,上一步/下一步)+ 设置页(API_BASE/提示默认/自带 LLM key 存本机 wx.storage)。内置 28 张牌面 SVG(CC BY-SA 4.0)。HTTPS/部署/账号/持久化留 Phase 9。
 
 ## 术语约定(川麻口语,最终成品统一使用)
 
@@ -116,6 +119,13 @@ majiang-coach/
 │  │  ├─ comment.py           # 川麻口语点评文案(第 N 巡/差 X 张下叫/叫牌/自摸/点炮/抢杠)
 │  │  └─ review.py            # review_record 编排(turn_action/claim/win/over 步 + 按座汇总)
 │  ├─ demo_review.py          # Phase 6 CLI:牌谱逐步回放 + AI 点评(支持 --file/--full/--hints/--seat)
+│  ├─ scoring/                # Phase 7 番种算分 + 完整结算(纯函数零依赖,独立消费 record)
+│  │  ├─ rules.py             # FanRules:可调番表/封顶 5 番/底分/杠钱额度 + DEFAULT_RULES
+│  │  ├─ fan.py               # fan_of:番种识别(牌型/事件/根)+ FanResult(总番/封顶/倍数)
+│  │  ├─ ctx.py               # scan_win_contexts:杠开/杠炮/抢杠/海底/天胡/地胡 事件上下文
+│  │  ├─ settle.py            # settle_record:逐胡+杠钱+查叫+查花猪;per_seat sum 恒 0
+│  │  └─ result.py            # SettleResult/各笔结算 + to_dict/from_dict 往返
+│  ├─ demo_score.py           # Phase 7 CLI:番种 + 完整结算(支持 --file/--full/--base)
 │  ├─ engine/                 # Phase 2 Game Engine(零依赖)
 │  │  ├─ wall.py              # TileWall:种子洗牌/发牌/摸牌/杠尾摸牌/流局
 │  │  ├─ melds.py             # Meld:碰/杠副露数据类
@@ -489,7 +499,9 @@ curl -X DELETE http://127.0.0.1:8000/api/phase5/session/{session_id}
     { "step": 4, "phase": "claim", "seat": 3, "tile": "1s", ...,
       "comment": "座2打 1s。可以碰(碰后差 4 张下叫)。" },
     { "step": 60, "phase": "win", "seat": 0, "actual_action": {"kind": "ron", "tile": "9m", ...},
-      "comment": "点炮(座1)胡 9m!(不算番,番种留 Phase 7)" },
+      "fans": { "items": [{"name":"平胡","fan":1,"basis":"基本牌型"}], "total_fan": 1, "multiplier": 1, "cap_applied": false, "by": "ron" },
+      "score": { "total_fan": 1, "multiplier": 1, "cap_applied": false, "amount_each": 1, "payer_seats": [1] },
+      "comment": "点炮(座1)胡 9m!平胡,1 番 1 倍,座1付。" },
     { "step": 70, "phase": "over", "seat": -1, "comment": "牌墙摸完,流局。" }
   ]
 }
@@ -542,8 +554,148 @@ curl -X POST http://127.0.0.1:8000/api/phase6/review \
 - 响应 = `ReviewResult.to_dict()`;`api_key` 经 `resolve_llm_config` 处理,不入日志、不回显。
 
 ### 与 Phase 7 的衔接
-- win 步点评为占位「不算番,番种留 Phase 7」:胡牌事实(自摸/点炮/抢杠/胡牌张/副露数)已在 `actual_action` 与牌谱 `result` 中齐备,Phase 7 番种算分直接消费。
+- win 步带 Phase 7 `fans`(`FanResult.to_dict()`)/`score`(倍数 + 付款座)字段,点评为实际番种川麻文案(如「清一色带根,4 番 8 倍,自摸三家各付」);`engine/settlement.py` 结算桩行为不变,完整算分由独立 `scoring/` 消费 record。
 - `ReviewCursor.final_state()` 与 `replay()` 锚定,后续复盘落库/WS 实时复盘可在 cursor 上扩展。
+
+
+## Phase 7 番种算分 + 完整结算(成都血战标准)
+
+`scoring/` 纯函数、零新第三方依赖、确定性输出;独立消费 `GameRecord`,不改 `engine/settlement.py` 与牌谱格式。
+
+### 番表与公式(`FanRules`,`DEFAULT_RULES` 为成都标准,全部可调)
+
+- 倍数 = `2^(总番-1)`;平胡 1 番 = 1 倍;**总番封顶 5 番 = 16 倍**(`cap_applied` 标注)。
+- **牌型番**:对对胡 2、七对 4、龙七对 8(七对/龙七对互斥,龙对那 4 张不另计根)、清一色 4、金勾钓 4(需 4 副露暗手仅剩将,不与对对胡重计)、幺九 4(全 1/9,含将)、天胡/地胡(顶格)。
+- **事件番(累加)**:自摸 +1、杠上开花 +2、杠上炮 +2、抢杠胡 +2、海底捞月/海底炮 +2、每根 +1(暗手 4 同张 / 杠各 1 根)。
+- **杠钱**(即时、不乘翻倍,底分单位):直杠 = 点杠者付 1;补杠(碰后加杠)= 在局三家各付 1,**被抢杠则不收**;暗杠 = 在局三家各付 2。
+- **支付**:自摸 = 在局三家各付;点炮 = 点炮者一人付;一炮多响 = 点炮者按各家番数分别付;**已胡者退出后续一切支付/收取**(血战)。
+- **流局查叫**:未下叫且非花猪者,赔每个「下叫未胡」者其**听牌理论最大番**对应倍数(`ukeire` 枚举待ち,逐张模拟胡牌 `fan_of` 取最大;死叫也算下叫)。
+- **查花猪**:花猪(缺门未清、终局暗手仍三门)赔其余三家(含已胡)各顶格 16;双花猪互赔自然抵消;**3 胡终局不查叫但查花猪**。
+- 退税 v0 不做(`FanRules.refund_kan_on_draw=False` 预留)。
+
+### SettleResult schema
+
+```jsonc
+{
+  "wins": [ { "seat": 0, "by": "tsumo", "tile": "5s", "from": null,
+    "fan": { "items": [{"name":"平胡","fan":1,"basis":"基本牌型"}, {"name":"自摸","fan":1}],
+             "total_fan": 2, "cap_applied": false, "multiplier": 2, "by": "tsumo" },
+    "payer_seats": [1, 2, 3], "amount_each": 2 } ],
+  "kans":    [ { "seat": 2, "kind": "ankan", "tile": "6s", "payer_seats": [0,1,3], "amount_each": 2 } ],
+  "tenpais": [ { "payer": 1, "wait_seat": 0, "wait_tiles": ["7p"], "max_fan": 3, "multiplier": 4, "amount": 4 } ],
+  "huazhus": [ { "huazhu_seat": 3, "payee": 0, "amount": 16 } ],
+  "per_seat": { "0": 29, "1": 9, "2": 13, "3": -51 },   // sum 恒为 0
+  "drawn": true, "base_score": 1,
+  "rules_used": { /* FanRules.to_dict():实际生效番表/封顶/杠钱额度 */ }
+}
+```
+
+- 事件上下文由 `scan_win_contexts(events)` 逐事件扫描(轻量、不 import `review/`):杠上开花 = tsumo 前邻同座 `kan_draw`;杠上炮 = ron 点炮者上一摸为 `kan_draw`(抢杠互斥);海底 = 胡牌时墙空(墙计数仿 ReviewCursor:108 − 发牌 − 摸牌数);天胡 = 庄家首摸自摸;地胡 = 非庄胡庄家首打;抢杠 = ron 事件自带 `robbery`。
+- `fan_of(hand14, melds, lack, by, ctx, rules)` 防呆:暗手张数须 = 14−3×副露数、胡牌张/副露不得含缺门牌,非法抛 `ValueError`。
+- 确定性:同一 record + 同一 `FanRules` -> 同一 `to_dict()`;`SettleResult.to_dict/from_dict` 往返一致。
+
+### Phase 7 CLI demo
+
+```bash
+# 内跑一局(4 随机 AI)打印各胡番种、杠钱、查叫/花猪与四座输赢
+python -m majiang_coach.demo_score 42
+python -m majiang_coach.demo_score 148          # 含暗杠/补杠/查叫/查花猪的完整局
+python -m majiang_coach.demo_score 42 --full    # 输出完整 SettleResult JSON
+python -m majiang_coach.demo_score --file record.json
+python -m majiang_coach.demo_score 42 --base 10 # 底分 10(金额线性放大)
+```
+
+### Phase 7 API demo
+
+```bash
+# 种子结算(seed 用 phase2 同款 Game 生成一局)
+curl -X POST http://127.0.0.1:8000/api/phase7/score \
+  -H "Content-Type: application/json" -d '{"seed":42}'
+
+# 直接贴牌谱;可带 rules 覆盖与 base 底分
+curl -X POST http://127.0.0.1:8000/api/phase7/score \
+  -H "Content-Type: application/json" \
+  -d '{"record":{...},"rules":{"cap_fan":4},"base":10}'
+```
+
+- 请求体:`{record | seed, rules?, base?}`;record 与 seed 二选一(都给/都缺/缺 events/非法牌谱 -> 400);`rules` 未知键 -> 400。
+- 响应 = `SettleResult.to_dict()`。
+
+
+## Phase 8 微信小程序前端(原生小程序)
+
+纯前端工程:微信原生 WXML/WXSS/JS(无框架、无构建链、无 npm),只消费后端 JSON API,不改后端任何逻辑;会话仍为单 `uvicorn` 进程内存(`practice/store.py`),多进程/持久化不在本阶段范围。
+
+### 目录结构
+
+```text
+miniprogram/
+├── app.js / app.json / app.wxss        # 全局逻辑 / 页面注册 / 绿桌主题
+├── project.config.json                 # 测试号(空 appid);urlCheck:false
+├── sitemap.json
+├── pages/
+│   ├── index/                          # 首页:AI 强度 / 提示开关 / 种子复盘入口 / 设置
+│   ├── practice/                       # 练习牌桌:决策点按钮 + 问教练 + 终局结算屏
+│   ├── review/                         # 复盘时间线:逐步点评 + 牌面快照,上一步/下一步
+│   └── settings/                       # 设置:API_BASE / 提示默认 / 自带 LLM 配置
+├── components/
+│   ├── tile/                           # 单张牌(SVG <image>)
+│   ├── hand/                           # 手牌(可点选;他家牌背)
+│   ├── meld-row/                       # 副露(碰/杠)
+│   ├── seat-block/                     # 座位块:缺门/胡/在局角标 + 弃牌区
+│   └── board/                          # 整桌:座0在下旋转布局 + 牌墙剩余 + 最近弃牌高亮
+├── utils/
+│   ├── api.js                          # wx.request 封装:session/act/advise/score/review + 设置 + llm 覆盖 + 统一 toast
+│   ├── tiles.js                        # 牌码 → SVG 资源映射 + 排序,缺张回退牌背
+│   └── viewmap.js                      # PlayerView/牌谱 → 渲染模型:动作按钮(legal_actions)、教练建议模型
+└── assets/tiles/                       # 28 张 SVG(万/条/筒 1-9 + 牌背)+ LICENSE
+```
+
+### 运行方式
+
+```bash
+# 后端(单进程;内存会话,切勿 --workers > 1)
+pip install -e ".[api]"
+uvicorn api.main:app
+```
+
+- 微信开发者工具导入 `miniprogram/` 目录;AppID 用测试号(`project.config.json` 中 `appid` 留空)。
+- 「详情 → 本地设置 → 勾选不校验合法域名、web-view(TLS)…」;默认连 `http://127.0.0.1:8000`,设置页可改 API_BASE。
+
+### 页面 ↔ API 对应
+
+| 页面 | 接口 |
+| ---- | ---- |
+| 首页 / 练习 | `POST /api/phase5/session`(建局:seed / ai_strengths / hints_on / llm)、`GET /api/phase5/session/{sid}`(轮询状态)、`POST .../session/{sid}/act`(决策点动作)、`POST .../session/{sid}/advise`(问教练)、`DELETE .../session/{sid}` |
+| 终局结算屏 | `POST /api/phase7/score`(练习终局 record:番种/倍数/封顶/收付/杠钱/查叫/查花猪/四座累计分) |
+| 复盘时间线 | `POST /api/phase6/review`(seed 或练习终局 record:逐步点评/牌面快照/win 步番种/按座汇总) |
+
+### LLM 配置与降级
+
+- 后端 `.env` 兜底:`LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL`。
+- 设置页可填自带 base_url / api_key / model,存 `wx.storage` 仅本机;请求体 `llm` 字段随 session/review 上送,优先级 **请求 > .env**。
+- 无 LLM 配置或调用失败时:教练建议降级显示 Phase 3 硬算 `recommend`(向听/有效牌/综合分/危险度);练习页「问教练」同理兜底。
+
+### 牌面资源
+
+- `miniprogram/assets/tiles/` 共 28 张 SVG:万/条/筒 1-9(27 张)+ 牌背 `back.svg`。
+- 来源:Mahjong tile SVG by perthmahjongsoc(源自 Cangjie6 等,Wikimedia Commons),**CC BY-SA 4.0**;`LICENSE` 随附。
+- `utils/tiles.js` 维护牌码 → 资源映射,未知牌码回退牌背。
+
+### 已知限制
+
+- 会话存内存:重启服务即清空;多 worker 路由不一致会丢 session(须单进程)。
+- 微信 `<image>` 对 SVG 的渲染以开发者工具/真机实测为准;若真机不渲染,把 SVG 转 PNG 并改 `tiles.js` 后缀即可。
+- 真机/上线必须 HTTPS 并在小程序后台配置 request 合法域名;部署、账号体系、持久化 DB 均属 Phase 9。
+- 无自动化 UI 测试,手动验证清单见下。
+
+### Phase 8 手动验证清单
+
+1. 牌面渲染:万/条/筒 1-9 正常显示,他家暗手显示牌背。
+2. 完整打一局:换三张 → 定缺 → 摸打/碰/杠/胡/抢杠 5 类决策点按钮随 `legal_actions` 出现 → 血战续打 → 终局;非法动作 toast 不卡死(400 后重同步)。
+3. 问教练 / hints_on:有 LLM key 显示 LLM advice,无 key 降级硬算推荐。
+4. 终局结算:番种/倍数/收付/杠钱/查叫/查花猪齐全,四座累计分红绿且 sum 守恒。
+5. 复盘时间线:逐步川麻评论 + 牌面快照 + win 步番种/倍数 + 按座汇总,上一步/下一步步进正常。
 
 
 ## API 语义说明
@@ -629,3 +781,28 @@ curl -X POST http://127.0.0.1:8000/api/phase6/review \
 - [x] README Phase 6 文档
 
 **Phase 6 完成。** 测试全绿(Phase 1-5 回归 + Phase 6 新增 test_review_cursor/test_review_comment/test_review/test_review_api,846 passed, 3 skipped)。
+
+### Phase 7:番种算分 + 完整结算(成都血战标准)
+- [x] scoring/rules.py(FanRules dataclass:番表数值/封顶 5 番/底分/杠钱额度/退税 flag;DEFAULT_RULES;to_dict 回传)
+- [x] scoring/fan.py(fan_of 纯函数:七对/龙七对互斥、对对胡、清一色、金勾钓、幺九、天胡地胡、自摸/杠开/杠炮/抢杠/海底、根;缺门与张数防呆;FanResult + cap_applied)
+- [x] scoring/ctx.py(scan_win_contexts:杠上开花/杠上炮/海底(墙计数)/天胡/地胡/抢杠,不 import review/)
+- [x] scoring/settle.py(settle_record:逐胡自摸三家/点炮单付/一炮多响 + 杠钱直/补/暗、抢杠不收 + 流局查叫 ukeire 理论最大番 + 查花猪;已胡退出支付;sum(per_seat)==0 不变式)
+- [x] scoring/result.py(WinSettlement/KanPayment/TenpaiPayment/HuazhuPayment/SettleResult + to_dict/from_dict 往返)+ __init__ 聚合
+- [x] review/review.py win 步新增 fans/score 字段(调 fan_of,纯终局事实不跑 LLM);review/comment.py 占位文案 -> 实际番种川麻文案;review/result.py 新字段往返
+- [x] demo_score.py(CLI;--file/--full/--base)+ pyproject `majiang-score` 入口
+- [x] api/main.py POST /api/phase7/score(record|seed 二选一;rules/base 覆盖;400 用例)+ version 0.4.0 + 根端点
+- [x] README Phase 7 文档
+- [x] 测试:test_scoring_fan/test_scoring_settle/test_scoring_api + 更新 test_review_comment/test_review/test_review_api(Phase 6 占位断言同步改)
+
+**Phase 7 完成。** 测试全绿(Phase 1-6 回归 + Phase 7 新增,964 passed, 3 skipped(967 总数))。
+
+### Phase 8:微信小程序前端(原生小程序)
+- [x] miniprogram/ 工程骨架(app/project.config/sitemap + 绿桌主题)与 28 张牌面 SVG 资产(CC BY-SA 4.0,LICENSE 随附)
+- [x] components:tile/hand/meld-row/seat-block/board(牌面、点选手牌、副露、座位缺门/胡/在局角标、整桌旋转与牌墙/最近弃牌)
+- [x] utils:api.js(wx.request 封装/设置/llm 覆盖/统一 toast)、tiles.js(牌码→SVG/排序)、viewmap.js(view→渲染模型/动作按钮/教练建议模型)
+- [x] pages:index(三入口)、practice(5 类决策点 + 问教练 + 非法动作 400 重同步)、settings(API_BASE/提示/LLM 存本机)
+- [x] 终局结算屏(POST /api/phase7/score:番种/倍数/封顶/收付/杠钱/查叫/查花猪/四座红绿分)
+- [x] 复盘时间线(POST /api/phase6/review:逐步点评 + 牌面快照 + win 步 fans/score + 按座汇总 + 步进)
+- [x] README Phase 8 文档
+
+**Phase 8 完成。** 后端测试保持全绿(964 passed, 3 skipped(967 总数));小程序手动验证见 Phase 8 验证清单。HTTPS/部署/账号/持久化 = Phase 9。

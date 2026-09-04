@@ -1,0 +1,13 @@
+.form-line {
+  margin-bottom: 20rpx;
+}
+.seg {
+  width: 320rpx;
+}
+.seed-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.about-text {
+  line-height: 1.7;
+}

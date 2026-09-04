@@ -1,0 +1,3 @@
+<view class="tile {{selected ? 'sel' : ''}} {{highlight ? 'hl' : ''}} {{small ? 'small' : ''}}" bindtap="onTap">
+  <image src="{{src}}" mode="aspectFit" class="tile-img" />
+</view>

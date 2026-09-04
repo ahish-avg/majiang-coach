@@ -1,0 +1,31 @@
+<view class="seat-block {{model && !model.active ? 'inactive' : ''}} {{compact ? 'compact' : ''}}" wx:if="{{model}}">
+  <view class="seat-head">
+    <text class="seat-name">{{seatLabel}}</text>
+    <text class="tag tag-gold" wx:if="{{lackText}}">{{lackText}}</text>
+    <text class="tag tag-red" wx:if="{{model.winner}}">胡</text>
+    <text class="tag" wx:if="{{!model.active}}">已胡/离场</text>
+  </view>
+  <view class="seat-hand">
+    <hand
+      tiles="{{model.tiles}}"
+      selected="{{[]}}"
+      highlightCode="{{model.isSelf ? model.drawnCode : ''}}"
+      interactive="{{false}}"
+      faceDown="{{!model.faceUp}}"
+      small="{{compact}}"
+    />
+  </view>
+  <meld-row melds="{{model.melds}}" />
+  <view class="river">
+    <block wx:if="{{river.length}}">
+      <tile
+        wx:for="{{river}}"
+        wx:key="key"
+        code="{{item.code}}"
+        small="{{true}}"
+        highlight="{{item.highlight}}"
+      />
+    </block>
+    <text class="muted" wx:else>(无弃牌)</text>
+  </view>
+</view>

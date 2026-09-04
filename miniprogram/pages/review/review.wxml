@@ -1,0 +1,128 @@
+<view class="review-page">
+  <view class="loading-card card" wx:if="{{loading}}">
+    <view class="spinner"></view>
+    <view class="loading-text">复盘加载中…</view>
+    <view class="muted">正在逐步回放牌谱并生成点评</view>
+  </view>
+
+  <view class="error-card card" wx:elif="{{error}}">
+    <view class="card-title">复盘加载失败</view>
+    <view class="muted">请检查 API 设置与网络后重试。</view>
+    <button class="btn btn-primary btn-block" bindtap="onRetry">重试</button>
+  </view>
+
+  <block wx:elif="{{current}}">
+    <view class="stepper card">
+      <button class="btn step-btn" bindtap="onPrev" disabled="{{idx <= 0}}">上一步</button>
+      <view class="step-center">
+        <view class="step-count">第 {{idx + 1}}/{{total}} 步</view>
+        <view class="step-tags">
+          <text class="tag tag-gold">{{current.phaseTag}}</text>
+          <text class="tag" wx:if="{{current.seatText}}">{{current.seatText}}</text>
+        </view>
+      </view>
+      <button class="btn step-btn" bindtap="onNext" disabled="{{idx >= total - 1}}">下一步</button>
+    </view>
+
+    <view class="step-card card">
+      <view class="quote" wx:if="{{current.comment}}">
+        <text>{{current.comment}}</text>
+      </view>
+
+      <view class="board-wrap" wx:if="{{current.hasView}}">
+        <board view="{{current.view}}" drawnCode=""></board>
+      </view>
+
+      <view class="info-line" wx:if="{{current.tile}}">
+        <text class="muted">相关牌：</text>
+        <tile code="{{current.tile}}" small="{{true}}"></tile>
+        <text class="info-text">{{current.tile}}</text>
+      </view>
+
+      <view class="info-line" wx:if="{{current.actionText}}">
+        <text class="muted">实战：</text>
+        <text class="tag tag-green">{{current.actionText}}</text>
+      </view>
+
+      <view class="fan-panel" wx:if="{{current.phase === 'win' && current.fans}}">
+        <view class="panel-title">胡牌结算</view>
+        <view class="fan-tags">
+          <text class="tag tag-red">{{current.fansByText}}</text>
+          <text class="tag tag-gold">{{current.fans.total_fan}} 番</text>
+          <text class="tag tag-gold">{{current.fans.multiplier}} 倍</text>
+          <text class="tag" wx:if="{{current.fans.cap_applied}}">已封顶</text>
+        </view>
+        <view class="fan-item" wx:for="{{current.fanItems}}" wx:key="name">
+          <text class="fan-name">{{item.name}}</text>
+          <text class="fan-fan">{{item.fan}} 番</text>
+          <text class="muted fan-basis" wx:if="{{item.basis}}">{{item.basis}}</text>
+        </view>
+        <view class="score-line" wx:if="{{current.score}}">
+          <text class="muted">付款：</text>
+          <text wx:for="{{current.payerSeats}}" wx:key="*this" class="tag">座{{item}}</text>
+          <text class="score-amount">各付 {{current.score.amount_each}}</text>
+        </view>
+      </view>
+
+      <view class="over-panel" wx:if="{{current.phase === 'over'}}">
+        <text class="tag tag-red">流局</text>
+      </view>
+
+      <view class="advice-panel" wx:if="{{current.advice}}">
+        <view class="panel-title">教练建议</view>
+        <block wx:if="{{current.hasLlm}}">
+          <view class="advice-line" wx:if="{{current.llm.recommended_tile}}">
+            <text class="muted">推荐打：</text>
+            <tile code="{{current.llm.recommended_tile}}" small="{{true}}"></tile>
+            <text class="advice-rec">{{current.llm.recommended_tile}}</text>
+          </view>
+          <view class="advice-text" wx:if="{{current.llm.teaching_point}}">{{current.llm.teaching_point}}</view>
+          <view class="advice-text" wx:if="{{current.llm.offense_reason}}">{{current.llm.offense_reason}}</view>
+        </block>
+        <view class="muted advice-error" wx:elif="{{current.adviceError}}">教练建议暂不可用：{{current.adviceError}}</view>
+        <view class="hard-line" wx:if="{{current.hard}}">
+          <text class="tag tag-green">硬算</text>
+          <text>推荐打 {{current.hard.code}}</text>
+          <text class="muted" wx:if="{{current.hard.hasUkeire}}">进张 {{current.hard.ukeire_count}}</text>
+          <text class="muted" wx:if="{{current.hard.hasShanten}}">打后向听 {{current.hard.shanten_after}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="summary-card card">
+      <view class="summary-head" bindtap="onToggleSummary">
+        <text class="card-title summary-title">本局总结</text>
+        <text class="muted">{{summaryOpen ? '收起 ▲' : '展开 ▼'}}</text>
+      </view>
+      <block wx:if="{{summaryOpen}}">
+        <view class="summary-tags">
+          <text class="tag {{hasOver ? 'tag-red' : 'tag-green'}}">{{hasOver ? '流局' : '终局'}}</text>
+          <text class="tag">事件 {{numEvents}}</text>
+          <text class="tag">决策点 {{total}}</text>
+        </view>
+        <view class="winners-line" wx:if="{{winners.length}}">
+          <text class="muted">胡家：</text>
+          <text class="winner-chip" wx:for="{{winners}}" wx:key="key">
+            {{item.seatText}}（{{item.byText}} {{item.tile}}）
+          </text>
+        </view>
+        <view class="tally-table">
+          <view class="tally-row tally-head">
+            <text class="tally-c1">座位</text>
+            <text class="tally-c2">决策次数</text>
+            <text class="tally-c3">胡法</text>
+            <text class="tally-c4">申索次数</text>
+          </view>
+          <view class="tally-row" wx:for="{{tally}}" wx:key="seat">
+            <text class="tally-c1">{{item.seatText}}</text>
+            <text class="tally-c2">{{item.decisions}}</text>
+            <text class="tally-c3">{{item.winBy || '—'}}</text>
+            <text class="tally-c4">{{item.claims}}</text>
+          </view>
+        </view>
+      </block>
+    </view>
+
+    <button class="btn btn-block home-btn" bindtap="onHome">返回首页</button>
+  </block>
+</view>
