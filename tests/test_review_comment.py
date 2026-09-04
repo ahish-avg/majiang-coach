@@ -1,7 +1,7 @@
 """tests for review/comment.py:川麻口语点评文案(Phase 6)。
 
 覆盖:turn 差 X 张下叫 / 已下叫列叫牌 / 推荐与实战比对(打得好 vs 推荐打 A 实际打 B);
-claim 可胡/可碰提示;win 自摸/点炮/抢杠(番种占位不算番)。
+claim 可胡/可碰提示;win 自摸/点炮/抢杠(Phase 7 起含实际番种/番数/倍数文案)。
 """
 
 from __future__ import annotations
@@ -115,9 +115,36 @@ def test_win_comment_robbery():
     assert "点炮" not in c
 
 
-def test_win_comment_no_fan_placeholder():
-    """番种占位不算番(留 Phase 7)。"""
-    for by, kw in (("tsumo", {}), ("ron", {"from_seat": 0})):
-        c = build_win_comment(by, "5m", **kw)
-        assert "不算番" in c
-        assert "Phase 7" in c
+def test_win_comment_with_fan_tsumo():
+    """Phase 7:自摸胡牌点评含番种/番数/倍数/收付。"""
+    c = build_win_comment("tsumo", "5m", fan_names=["清一色", "自摸"],
+                          total_fan=5, multiplier=16, cap_applied=True,
+                          payer_text="在局三家各付")
+    assert "自摸 5m 胡牌" in c
+    assert "清一色、自摸,5 番 16 倍" in c
+    assert "封顶" in c
+    assert "在局三家各付" in c
+
+
+def test_win_comment_with_fan_ron():
+    """点炮胡:点炮者付;抢杠胡用抢杠文案。"""
+    c = build_win_comment("ron", "3p", from_seat=2, fan_names=["平胡"],
+                          total_fan=1, multiplier=1, payer_text="座2付")
+    assert "点炮(座2)胡 3p" in c
+    assert "平胡,1 番 1 倍" in c
+    assert "座2付" in c
+
+    c2 = build_win_comment("ron", "3p", from_seat=1, robbery=True,
+                           fan_names=["抢杠胡", "平胡"], total_fan=3,
+                           multiplier=4, payer_text="座1付")
+    assert "抢杠胡 3p" in c2
+    assert "点炮" not in c2
+    assert "4 倍" in c2
+
+
+def test_win_comment_without_fan_plain():
+    """无番种输入时退化为纯胡牌播报(不出现占位文案)。"""
+    c = build_win_comment("tsumo", "5m")
+    assert "自摸 5m 胡牌" in c
+    assert "番" not in c
+    assert "Phase 7" not in c

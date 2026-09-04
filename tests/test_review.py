@@ -250,6 +250,12 @@ def test_win_steps_and_win_by():
             found = True
             assert s.actual_action["kind"] in ("tsumo", "ron")
             assert "胡" in s.comment  # 自摸/点炮/抢杠 文案均含“胡”
+            # Phase 7:win 步带番种与倍数(fans/score),占位文案消失
+            assert s.fans is not None and s.score is not None
+            assert s.fans["multiplier"] == 1 << (s.fans["total_fan"] - 1)
+            assert s.score["multiplier"] == s.fans["multiplier"]
+            assert s.score["payer_seats"]
+            assert "倍" in s.comment and "不算番" not in s.comment
         winners_by = {seat: st["win_by"] for seat, st in res.summary["per_seat"].items()
                       if st["win_by"] is not None}
         for s in win_steps:

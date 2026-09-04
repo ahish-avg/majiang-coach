@@ -31,6 +31,8 @@ class ReviewStep:
     analysis: dict | None = None       # Phase 3 AnalysisResult.to_dict()
     advice: dict | None = None         # Phase 4 AdviseResult.to_dict()(hints_on)
     comment: str = ""                  # 川麻口语点评
+    fans: dict | None = None           # Phase 7 FanResult.to_dict()(win 步)
+    score: dict | None = None          # Phase 7 本胡倍数/付款座(win 步)
 
     def __post_init__(self) -> None:
         if self.phase not in _PHASES:
@@ -49,6 +51,8 @@ class ReviewStep:
             "analysis": self.analysis,
             "advice": self.advice,
             "comment": self.comment,
+            "fans": self.fans,
+            "score": self.score,
         }
 
     @classmethod
@@ -65,6 +69,8 @@ class ReviewStep:
             analysis=d.get("analysis"),
             advice=d.get("advice"),
             comment=d.get("comment", ""),
+            fans=d.get("fans"),
+            score=d.get("score"),
         )
 
 

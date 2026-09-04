@@ -19,9 +19,10 @@ from collections import Counter
 from .. import tiles
 from ..analysis import analyze
 from ..engine.action import legal_claims
-from ..engine.record import GameRecord
+from ..engine.record import GameRecord, meld_from_dict
 from ..llm import advise
 from ..practice.prompt import view_to_dict
+from ..scoring import fan_of, scan_win_contexts
 from .comment import build_claim_comment, build_turn_comment, build_win_comment
 from .cursor import ReviewCursor
 from .result import ReviewResult, ReviewStep
@@ -78,6 +79,7 @@ def review_record(
     rec = record if isinstance(record, GameRecord) else GameRecord.from_dict(record)
     events = rec.events
     cursor = ReviewCursor(rec)
+    win_ctxs = {c.event_index: c for c in scan_win_contexts(events)}
 
     if seat_focus is None:
         focus = None
@@ -189,6 +191,34 @@ def review_record(
             from_seat = ev.get("from")
             robbery = ev.get("robbery", False)
             per_seat[seat]["win_by"] = t
+
+            # Phase 7:终局事实算番(纯硬算,不跑 LLM)
+            ctx = win_ctxs.get(i)
+            melds = [meld_from_dict(m) for m in ev.get("melds", [])]
+            hand_idx = [tiles.code_to_index(c) for c in ev.get("hand", [])]
+            fan = fan_of(hand_idx, melds, ev.get("lack"), by=t, ctx=ctx)
+            fan_dict = fan.to_dict()
+            score = {
+                "total_fan": fan.total_fan,
+                "multiplier": fan.multiplier,
+                "cap_applied": fan.cap_applied,
+                "amount_each": fan.multiplier,
+                "payer_seats": (
+                    [s for s in range(4) if s != seat and cursor.active[s]]
+                    if t == "tsumo" else [from_seat]
+                ),
+            }
+            if t == "tsumo":
+                payer_text = "在局三家各付" if len(score["payer_seats"]) == 3 else "在局者各付"
+            else:
+                payer_text = f"座{from_seat}付"
+            win_comment = build_win_comment(
+                t, tile_code, from_seat, robbery,
+                fan_names=fan.names(), total_fan=fan.total_fan,
+                multiplier=fan.multiplier, cap_applied=fan.cap_applied,
+                payer_text=payer_text,
+            )
+
             if focus is not None and seat not in focus:
                 continue
             view = cursor.view(seat)
@@ -203,7 +233,9 @@ def review_record(
                 view=view_to_dict(view),
                 analysis=None,
                 advice=None,
-                comment=build_win_comment(t, tile_code, from_seat, robbery),
+                comment=win_comment,
+                fans=fan_dict,
+                score=score,
             ))
 
         elif t == "ryuukyoku":

@@ -1,7 +1,7 @@
 """review/comment.py:川麻口语点评文案生成(Phase 6,见计划 §6.3)。
 
-所有输出用川麻口语:第 N 巡/摸牌/差 X 张下叫/已下叫/叫牌/自摸/点炮/抢杠。
-函数名沿用技术词(shanten/ukeire),文案对外一律口语。番种占位留 Phase 7。
+所有输出用川麻口语:第 N 巡/摸牌/差 X 张下叫/已下叫/叫牌/自摸/点炮/抢杠/番种倍数。
+函数名沿用技术词(shanten/ukeire),文案对外一律口语。胡牌番种来自 Phase 7 scoring。
 """
 
 from __future__ import annotations
@@ -81,13 +81,27 @@ def build_win_comment(
     tile_code: str,
     from_seat: int | None = None,
     robbery: bool = False,
+    fan_names: list[str] | None = None,
+    total_fan: int | None = None,
+    multiplier: int | None = None,
+    cap_applied: bool = False,
+    payer_text: str | None = None,
 ) -> str:
-    """胡牌点评:自摸/点炮(含胡牌张与抢杠);番种占位不算番(留 Phase 7)。"""
-    if by == "tsumo":
+    """胡牌点评:自摸/点炮(含胡牌张与抢杠)+ 实际番种/番数/倍数/收付(Phase 7)。
+
+    fan_names 为空(未结算)时退化为纯胡牌播报。
+    """
+    if robbery:
+        s = f"抢杠胡 {tile_code}!"
+    elif by == "tsumo":
         s = f"自摸 {tile_code} 胡牌!"
     else:
         s = f"点炮(座{from_seat})胡 {tile_code}!"
-    if robbery:
-        s = f"抢杠胡 {tile_code}!"
-    s += "(不算番,番种留 Phase 7)"
+    if fan_names:
+        s += f"{'、'.join(fan_names)},{total_fan} 番 {multiplier} 倍"
+        if cap_applied:
+            s += "(封顶)"
+        if payer_text:
+            s += f",{payer_text}"
+        s += "。"
     return s

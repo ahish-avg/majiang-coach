@@ -30,6 +30,7 @@ from majiang_coach.practice import (
     PracticeSession, SessionStore, IllegalActionError, action_from_dict,
 )
 from majiang_coach.review import review_record as phase6_review_record
+from majiang_coach.scoring import FanRules, settle_record
 
 _LACK_LETTER_TO_INT = {"m": 0, "s": 1, "p": 2}
 _SUIT_NAME = {0: "万", 1: "条", 2: "筒"}
@@ -72,6 +73,7 @@ def root() -> dict:
         "endpoints": [
             "/api/phase1/analyze", "/api/phase2/play", "/api/phase3/analyze",
             "/api/phase4/advise", "/api/phase5/session", "/api/phase6/review",
+            "/api/phase7/score",
         ],
     }
 
@@ -411,8 +413,11 @@ def review6(req: ReviewRequest) -> dict:
     if (req.record is None) == (req.seed is None):
         raise HTTPException(status_code=400, detail="record 与 seed 须二选一")
     if req.record is not None:
-        if not isinstance(req.record.get("events"), list):
+        events = req.record.get("events")
+        if not isinstance(events, list):
             raise HTTPException(status_code=400, detail="record 缺 events 列表")
+        if not events:
+            raise HTTPException(status_code=400, detail="record events 为空")
         record = req.record
     else:
         actors = [RandomActor(req.seed * 4 + i) for i in range(4)]  # type: ignore[operator]
@@ -428,6 +433,49 @@ def review6(req: ReviewRequest) -> dict:
             weights=req.weights,
             seat_focus=req.seat_focus,
         )
+    except (ValueError, KeyError, IndexError) as e:
+        raise HTTPException(status_code=400, detail=f"非法牌谱: {e}")
+    return result.to_dict()
+
+
+# ---- Phase 7: 番种算分 + 完整结算(成都血战标准)----
+
+class ScoreRequest(BaseModel):
+    record: dict | None = Field(None, description="牌谱 JSON(meta+events+result);与 seed 二选一")
+    seed: int | None = Field(None, description="随机种子;无 record 时用 phase2 同款 Game 生成一局")
+    rules: dict | None = Field(None, description="FanRules 覆盖(如 {\"cap_fan\": 4});留空用默认成都标准")
+    base: int | None = Field(None, description="底分覆盖(等价 rules.base_score);默认 1")
+
+
+@app.post("/api/phase7/score")
+def score7(req: ScoreRequest) -> dict:
+    """完整结算:番种 + 支付 + 杠钱 + 流局查叫/查花猪 + 四座累计 -> SettleResult.to_dict()。
+
+    record 与 seed 二选一(都给/都缺/非法牌谱 -> 400);rules 未知键 -> 400。
+    """
+    if (req.record is None) == (req.seed is None):
+        raise HTTPException(status_code=400, detail="record 与 seed 须二选一")
+    try:
+        rules_kwargs = dict(req.rules) if req.rules else {}
+        if req.base is not None:
+            rules_kwargs["base_score"] = req.base
+        rules = FanRules.from_dict(rules_kwargs)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if req.record is not None:
+        events = req.record.get("events")
+        if not isinstance(events, list):
+            raise HTTPException(status_code=400, detail="record 缺 events 列表")
+        if not events:
+            raise HTTPException(status_code=400, detail="record events 为空")
+        record = req.record
+    else:
+        actors = [RandomActor(req.seed * 4 + i) for i in range(4)]  # type: ignore[operator]
+        record = Game(actors, req.seed).run()  # type: ignore[arg-type]
+
+    try:
+        result = settle_record(record, rules)
     except (ValueError, KeyError, IndexError) as e:
         raise HTTPException(status_code=400, detail=f"非法牌谱: {e}")
     return result.to_dict()

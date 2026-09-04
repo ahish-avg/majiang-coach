@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "majiang-coach"
-version = "0.1.0"
-description = "川麻血战核心算法 (Phase 1: 牌表示 + 胡牌 + 向听 + 有效牌)"
+version = "0.4.0"
+description = "川麻血战教练:核心算法 + AI + LLM 顾问 + 练习 + 复盘 + 番种结算 (Phase 1-7)"
 readme = "README.md"
 requires-python = ">=3.11"
 # 核心算法层:零第三方依赖(便于后续迁移小程序后端)
@@ -22,6 +22,7 @@ majiang-demo = "majiang_coach.demo:main"
 majiang-game = "majiang_coach.demo_game:main"
 majiang-practice = "majiang_coach.demo_practice:main"
 majiang-review = "majiang_coach.demo_review:main"
+majiang-score = "majiang_coach.demo_score:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

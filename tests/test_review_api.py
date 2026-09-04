@@ -22,7 +22,7 @@ def _record(seed: int) -> dict:
 
 _STEP_KEYS = {
     "step", "event_index", "phase", "seat", "tile", "hand_total",
-    "actual_action", "view", "analysis", "advice", "comment",
+    "actual_action", "view", "analysis", "advice", "comment", "fans", "score",
 }
 
 
@@ -141,6 +141,11 @@ def test_invalid_record_events_400():
 
 def test_garbage_body_400():
     r = client.post("/api/phase6/review", json={"record": {"meta": {}, "events": "x"}})
+    assert r.status_code == 400
+
+
+def test_record_empty_events_400():
+    r = client.post("/api/phase6/review", json={"record": {"events": []}})
     assert r.status_code == 400
 
 
