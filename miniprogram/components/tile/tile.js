@@ -18,7 +18,7 @@ Component({
   },
   methods: {
     onTap: function () {
-      this.triggerEvent('tap', { code: this.data.code })
+      this.triggerEvent('tiletap', { code: this.data.code })
     }
   }
 })

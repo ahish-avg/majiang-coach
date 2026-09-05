@@ -128,7 +128,6 @@ Page({
     cur.seatText = seatText(step.seat)
     cur.actionText = actionText(step.actual_action)
     cur.hasView = !!step.view
-    cur.board = step.view ? viewmap.boardModel(step.view, null) : null
     if (step.fans) {
       cur.fansByText = byText(step.fans.by)
       cur.fanItems = step.fans.items || []

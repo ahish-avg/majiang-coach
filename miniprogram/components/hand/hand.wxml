@@ -6,7 +6,7 @@
       highlight="{{item.highlight}}"
       faceDown="{{item.faceDown}}"
       small="{{item.small}}"
-      bind:tap="onTileTap"
+      bind:tiletap="onTileTap"
     />
   </block>
 </view>
